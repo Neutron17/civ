@@ -1,6 +1,6 @@
 CC = clang
 
-PNAME = civ
+PNAME = niv
 
 SRC  = $(shell find src -name "*.c")
 OBJ  = $(SRC:.c=.o)
