@@ -1,10 +1,12 @@
-#include <SDL2/SDL_render.h>
-#include <SDL2/SDL_surface.h>
+#include <SDL2/SDL_scancode.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <signal.h>
 #include <sys/stat.h>
 #include <dirent.h>
+#include <errno.h>
+#include <string.h>
+#include <execinfo.h>
 #include "array.h"
 
 #include <SDL2/SDL.h>
@@ -13,12 +15,20 @@
 void sigHandler(int sig);
 int isDir(const char *name);
 bool isSupportedFile(const char *name);
+void addDirChildrenToArr(const char *dname, Array *arr, int fnameMaxLen);
+void printTrace(void);
 
 const char *supportedExts[4] = {
 	".png", ".jpg", ".jpeg", ".webp"
 };
 bool quit = false;
+bool isDebug = false;
 bool showWarnings = false;
+
+/* TODO
+ * parseArgs
+ *
+ */
 
 int main(int argc, char *argv[]) {
 	signal(SIGINT, sigHandler);
@@ -27,36 +37,13 @@ int main(int argc, char *argv[]) {
 		return -1;
 	}
 	Array imgs = array_create(argc);
-	{
-		DIR *d;
-		struct dirent *dir;
-		for(int i = 1; i < argc; i++) {
-			if(isDir(argv[i])) {
-				d = opendir(argv[i]);
-				if (d) {
-					while ((dir = readdir(d)) != NULL) {
-						char *name = malloc(64);
-						if(argv[i][strnlen(argv[i], 16)-1] == '/')
-							sprintf(name, "%s%s", argv[i], dir->d_name);
-						else
-							sprintf(name, "%s/%s", argv[i], dir->d_name);
-						// no recursion
-						if(!isDir(name)) {
-							if(isSupportedFile(name)) {
-								array_add(&imgs, (void *)name);
-							}
-						}
-					}
-					closedir(d);
-				}
-			} else {
-				if(isSupportedFile(argv[i]))
-					array_add(&imgs, argv[i]);
-			}
-		}
-	}
-	for (int i = 0; i < imgs.used; i++) {
-		printf("%s\n", (char *)array_get(imgs, i));
+	for(int i = 1; i < argc; i++)
+		addDirChildrenToArr(argv[i], &imgs, 128);
+	if(imgs.used < 1)
+		goto cleanUp;
+	if(isDebug) {
+		for (int i = 0; i < imgs.used; i++)
+			printf("%s\n", (char *)array_get(imgs, i));
 	}
 
 	if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) < 0) {
@@ -83,7 +70,6 @@ int main(int argc, char *argv[]) {
 
 	SDL_Event e;
 	while(!quit) {
-		printf("%s\n", IMG_GetError());
 		SDL_WaitEvent(&e);
 		switch (e.type) {
 			case SDL_QUIT:
@@ -100,17 +86,74 @@ int main(int argc, char *argv[]) {
 				break;
 			case SDL_KEYDOWN:
 				switch (e.key.keysym.scancode) {
+					case SDL_SCANCODE_L:
 					case SDL_SCANCODE_N:
+					case SDL_SCANCODE_J:
+					case SDL_SCANCODE_S:
+					case SDL_SCANCODE_RIGHT:
 						if(pointer >= imgs.used-1)
 							pointer = 0;
 						else
 							pointer++;
-						printf("ptr: %d %s %d\n", pointer, (char *)array_get(imgs, pointer), imgs.used);
+						if(isDebug)
+							printf("ptr: %d %s %d\n", pointer, (char *)array_get(imgs, pointer), imgs.used);
 						SDL_DestroyTexture(text);
 						text = IMG_LoadTexture(renderer, (char *)array_get(imgs, pointer));
 						break;
+					case SDL_SCANCODE_H:
+					case SDL_SCANCODE_K:
+					case SDL_SCANCODE_A:
+					case SDL_SCANCODE_W:
+					case SDL_SCANCODE_LEFT:
+						if(pointer <= 0)
+							pointer = imgs.used-1;
+						else
+							pointer--;
+						if(isDebug)
+							printf("ptr: %d %s %d\n", pointer, (char *)array_get(imgs, pointer), imgs.used);
+						SDL_DestroyTexture(text);
+						text = IMG_LoadTexture(renderer, (char *)array_get(imgs, pointer));
+						break;
+
 					case SDL_SCANCODE_Q:
 						quit = true;
+						break;
+					case SDL_SCANCODE_D:
+						puts("Debug Info:");
+						puts(" - Stack Trace");
+						printTrace();
+						printf(" - SDL\n"
+							"\tWindow: %p\n"
+							"\tWindow_w: %d\n"
+							"\tWindow_h: %d\n"
+							"\tRenderer: %p\n"
+							"\tTexture: %p\n"
+							"\tSDL_GetError: '%s'\n"
+							"\tIMG_GetError: '%s'\n"
+							" - Other stuff\n"
+							"\terrno: %d\n"
+							"\tstrerror: '%s'\n"
+							"\tprogram_name: '%s'\n"
+							"\targc: %d\n"
+							" - Images Array\n"
+							"\tsize: %d\n"
+							"\tused: %d\n"
+							"\tarray: %p\n"
+
+							,(void *)window, width, height, (void *)renderer, (void *)text, SDL_GetError(), IMG_GetError(),
+							errno, strerror(errno), argv[0], argc,
+							imgs.size, imgs.used, (void *)imgs.array
+							);
+						for(int i = 0; i < imgs.used; i++) {
+							char *curr = array_get(imgs, i);
+							if(!curr) {
+								printf("\t\t%d: NULL\n", i);
+								break;
+							}
+							printf("\t\t%d: %p", i, (void *)curr);
+							fflush(stdout);
+							printf(" '%s'\n", curr);
+						}
 						break;
 					default: {}
 				}
@@ -121,7 +164,8 @@ int main(int argc, char *argv[]) {
 		SDL_RenderCopy(renderer, text, NULL, NULL);
 		SDL_RenderPresent(renderer);
 	}
-	for(int i = 0; i < 0; i++)
+cleanUp:
+	for(int i = 0; i < imgs.used; i++)
 		free(array_get(imgs, i));
 	array_destroy(&imgs);
 	SDL_DestroyTexture(text);
@@ -130,6 +174,60 @@ int main(int argc, char *argv[]) {
 	IMG_Quit();
 	SDL_Quit();
 	return 0;
+}
+
+void addDirChildrenToArr(const char *dname, Array *arr, int fnameMaxLen) {
+	static int depth = 0;
+	depth++;
+	if(depth > 5)
+		return;
+	unsigned nameMax = fnameMaxLen;
+	if(fnameMaxLen <= 0)
+		nameMax = 64;
+	if(strnlen(dname, nameMax+1) > nameMax) {
+		fprintf(stderr, "ERROR: '%s' is longer than max length(%d)\n", dname, nameMax);
+	}
+	if(isDir(dname)) {
+		DIR *d = opendir(dname);
+		struct dirent *dir;
+		if (d) {
+			while ((dir = readdir(d)) != NULL) {
+				if(dir->d_name[0] == '.')
+					continue;
+				int sprntfo = -1;
+				char *name = malloc(nameMax);
+				if(dname[strnlen(dname, nameMax)-1] == '/')
+					sprntfo = snprintf(name, nameMax, "%s%s", dname, dir->d_name);
+				else
+					sprntfo = snprintf(name, nameMax, "%s/%s", dname, dir->d_name);
+
+				if(sprntfo > nameMax) {
+					fprintf(stderr, "ERROR: '%s...' Too long filename\n", name);
+					return;
+				}
+				if(!isDir(name)) {
+					if(isSupportedFile(name))
+						array_add(arr, (void *)name);
+				} else {
+					char tmp[nameMax];
+					if(dname[strnlen(dname, nameMax)-1] == '/')
+						sprntfo = snprintf(tmp, nameMax, "%s%s", dname, dir->d_name);
+					else
+						sprntfo = snprintf(tmp, nameMax, "%s/%s", dname, dir->d_name);
+
+					if(sprntfo > nameMax) {
+						fprintf(stderr, "ERROR: '%s...' Too long filename\n", tmp);
+						return;
+					}
+					addDirChildrenToArr(tmp, arr, nameMax);
+				}
+			}
+			closedir(d);
+		}
+	} else {
+		if(isSupportedFile(dname))
+			array_add(arr, (void *)dname);
+	}
 }
 
 bool isSupportedFile(const char *name) {
@@ -149,10 +247,24 @@ bool isSupportedFile(const char *name) {
 }
 
 int isDir(const char *name) {
-   struct stat statbuf;
-   if (stat(name, &statbuf) != 0)
-       return 0;
-   return S_ISDIR(statbuf.st_mode);
+	struct stat statbuf;
+	if (stat(name, &statbuf) != 0)
+		return 0;
+	return S_ISDIR(statbuf.st_mode);
+}
+
+void printTrace(void) {
+	void *array[10];
+	char **strings;
+	int size, i;
+	size = backtrace (array, 10);
+	strings = backtrace_symbols (array, size);
+	if (strings != NULL) {
+	printf("\tObtained %d stack frames.\n", size);
+	for (i = 0; i < size; i++)
+		printf ("\t%s\n", strings[i]);
+	}
+	free (strings);
 }
 
 void sigHandler(int sig) {

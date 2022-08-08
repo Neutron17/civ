@@ -12,5 +12,11 @@ sudo make install
 niv [files/dirs]
 ```
 
-go to next picture by pressing ```n```
+### Navigation
+
+go to next picture by pressing the ```right arrow key```, ```n```, ```l```, ```j```, ```s```
+
+go to previous picture by pressing ```the left arrow key```, ```p```, ```h```, ```k```, ```w```, ```a```
+
+Print debug info with ```d```
 
