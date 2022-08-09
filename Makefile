@@ -10,7 +10,7 @@ EXEC = $(BIN)/$(PNAME)
 INCFLAGS  = -Isrc/
 
 CCFLAGS += $(INCFLAGS)
-CCFLAGS += -O0
+CCFLAGS += -Oz
 CCFLAGS += -Wall
 CCFLAGS += -pedantic
 

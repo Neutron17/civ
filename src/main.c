@@ -1,7 +1,7 @@
-#include <SDL2/SDL_scancode.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <signal.h>
+#include <stdlib.h>
 #include <sys/stat.h>
 #include <dirent.h>
 #include <errno.h>
@@ -17,6 +17,10 @@ int isDir(const char *name);
 bool isSupportedFile(const char *name);
 void addDirChildrenToArr(const char *dname, Array *arr, int fnameMaxLen);
 void printTrace(void);
+
+void __assert_m(bool expr, const char *restrict msg, const char *restrict file, const char *restrict func, int line);
+#define ASSERT_M(EXPR, MSG) __assert_m(EXPR, MSG, __FILE__, __func__, __LINE__)
+#define ASSERT(EXPR) ASSERT_M(EXPR, NULL)
 
 const char *supportedExts[4] = {
 	".png", ".jpg", ".jpeg", ".webp"
@@ -66,8 +70,13 @@ int main(int argc, char *argv[]) {
 		return -3;
 	}
 	int pointer = 0;
-	SDL_Texture *text = IMG_LoadTexture(renderer, array_get(imgs, pointer));
-
+	SDL_Texture *text = NULL;
+	{
+		char *str = (char *)array_get(imgs, pointer);
+		ASSERT_M(str, "First image was NULL");
+		SDL_SetWindowTitle(window, str);
+		text = IMG_LoadTexture(renderer, str);
+	}
 	SDL_Event e;
 	while(!quit) {
 		SDL_WaitEvent(&e);
@@ -90,21 +99,25 @@ int main(int argc, char *argv[]) {
 					case SDL_SCANCODE_N:
 					case SDL_SCANCODE_J:
 					case SDL_SCANCODE_S:
-					case SDL_SCANCODE_RIGHT:
+					case SDL_SCANCODE_RIGHT: {
 						if(pointer >= imgs.used-1)
 							pointer = 0;
 						else
 							pointer++;
 						if(isDebug)
 							printf("ptr: %d %s %d\n", pointer, (char *)array_get(imgs, pointer), imgs.used);
+						char *str = (char *) array_get(imgs, pointer);
+						ASSERT_M(str, "filename of image was NULL");
+						SDL_SetWindowTitle(window, str);
 						SDL_DestroyTexture(text);
-						text = IMG_LoadTexture(renderer, (char *)array_get(imgs, pointer));
+						text = IMG_LoadTexture(renderer, str);
 						break;
+					}
 					case SDL_SCANCODE_H:
 					case SDL_SCANCODE_K:
 					case SDL_SCANCODE_A:
 					case SDL_SCANCODE_W:
-					case SDL_SCANCODE_LEFT:
+					case SDL_SCANCODE_LEFT: {
 						if(pointer <= 0)
 							pointer = imgs.used-1;
 						else
@@ -112,9 +125,12 @@ int main(int argc, char *argv[]) {
 						if(isDebug)
 							printf("ptr: %d %s %d\n", pointer, (char *)array_get(imgs, pointer), imgs.used);
 						SDL_DestroyTexture(text);
-						text = IMG_LoadTexture(renderer, (char *)array_get(imgs, pointer));
+						char *str = (char *) array_get(imgs, pointer);
+						ASSERT_M(str != NULL, "filename of image was NULL");
+						SDL_SetWindowTitle(window, str);
+						text = IMG_LoadTexture(renderer, str);
 						break;
-
+					}
 					case SDL_SCANCODE_Q:
 						quit = true;
 						break;
@@ -251,6 +267,39 @@ int isDir(const char *name) {
 	if (stat(name, &statbuf) != 0)
 		return 0;
 	return S_ISDIR(statbuf.st_mode);
+}
+
+void __assert_m(bool expr, const char *restrict msg, const char *restrict file, const char *restrict func, int line) {
+	if(!expr) {
+		char mesg[256];
+		snprintf(mesg, 256, "ERROR: Assertion failed\n"
+				"\tin file: '%s'\n"
+				"\tin function: '%s'\n"
+				"\tat line: %d\n"
+				"\terrno: %d\n"
+				"\tstrerror: '%s'\n"
+				"\tSDL_GetError: '%s'\n"
+				"\tIMG_GetError: '%s'\n",
+
+				file, func, line, errno, strerror(errno), SDL_GetError(), IMG_GetError()
+		);
+		if(msg) {
+			strncat(mesg, "\tMessage: '", 12);
+			strncat(mesg, msg, 32);
+			strncat(mesg, "'", 2);
+
+			//snprintf(mesg, 256, "%s\tMessage: '%s'\n", mesg, msg);
+		}
+		fprintf(stderr, "%s", mesg);
+		FILE *file = fopen("niv_err.log", "a");
+		if(!file) {
+			fprintf(stderr, "ERROR: Couldn't open 'niv_err.log' file\n");
+			abort();
+		}
+		fprintf(file, "%s", mesg);
+		fclose(file);
+		abort();
+	}
 }
 
 void printTrace(void) {
