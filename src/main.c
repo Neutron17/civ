@@ -7,7 +7,9 @@
 #include <errno.h>
 #include <string.h>
 #include <execinfo.h>
+
 #include "array.h"
+#include "assrt.h"
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
@@ -17,10 +19,6 @@ int isDir(const char *name);
 bool isSupportedFile(const char *name);
 void addDirChildrenToArr(const char *dname, Array *arr, int fnameMaxLen);
 void printTrace(void);
-
-void __assert_m(bool expr, const char *restrict msg, const char *restrict file, const char *restrict func, int line);
-#define ASSERT_M(EXPR, MSG) __assert_m(EXPR, MSG, __FILE__, __func__, __LINE__)
-#define ASSERT(EXPR) ASSERT_M(EXPR, NULL)
 
 const char *supportedExts[4] = {
 	".png", ".jpg", ".jpeg", ".webp"
@@ -267,39 +265,6 @@ int isDir(const char *name) {
 	if (stat(name, &statbuf) != 0)
 		return 0;
 	return S_ISDIR(statbuf.st_mode);
-}
-
-void __assert_m(bool expr, const char *restrict msg, const char *restrict file, const char *restrict func, int line) {
-	if(!expr) {
-		char mesg[256];
-		snprintf(mesg, 256, "ERROR: Assertion failed\n"
-				"\tin file: '%s'\n"
-				"\tin function: '%s'\n"
-				"\tat line: %d\n"
-				"\terrno: %d\n"
-				"\tstrerror: '%s'\n"
-				"\tSDL_GetError: '%s'\n"
-				"\tIMG_GetError: '%s'\n",
-
-				file, func, line, errno, strerror(errno), SDL_GetError(), IMG_GetError()
-		);
-		if(msg) {
-			strncat(mesg, "\tMessage: '", 12);
-			strncat(mesg, msg, 32);
-			strncat(mesg, "'", 2);
-
-			//snprintf(mesg, 256, "%s\tMessage: '%s'\n", mesg, msg);
-		}
-		fprintf(stderr, "%s", mesg);
-		FILE *file = fopen("niv_err.log", "a");
-		if(!file) {
-			fprintf(stderr, "ERROR: Couldn't open 'niv_err.log' file\n");
-			abort();
-		}
-		fprintf(file, "%s", mesg);
-		fclose(file);
-		abort();
-	}
 }
 
 void printTrace(void) {
