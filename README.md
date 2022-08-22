@@ -1,4 +1,18 @@
-# Neutron17's Image Viewer
+# Neutron Image Viewer
+
+![Alt text](images/demo.png "title")
+
+## Features
+
+ - multiple files
+ - vim keybindings
+ - detect displayable files in directory (by file extension)
+ - recursive file search in directory
+
+## Anti Features
+
+ - somewhat bad performance
+ - bad scales
 
 ## Installation
 
